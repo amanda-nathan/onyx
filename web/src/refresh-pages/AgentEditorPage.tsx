@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import * as SettingsLayouts from "@/layouts/settings-layouts";
 import * as GeneralLayouts from "@/layouts/general-layouts";
@@ -475,6 +475,61 @@ function StarterMessages() {
   );
 }
 
+interface AgentDefaultModelPickerProps {
+  personaId?: number;
+}
+
+function AgentDefaultModelPicker({ personaId }: AgentDefaultModelPickerProps) {
+  const { values, setFieldValue } = useFormikContext<{
+    llm_model_version_override: string | null;
+    llm_model_provider_override: string | null;
+  }>();
+  const { llmProviders } = useLLMProviders(personaId);
+
+  const modelConfigId = useMemo((): number | null => {
+    const modelName = values.llm_model_version_override;
+    const providerName = values.llm_model_provider_override;
+    if (!modelName) return null;
+    for (const p of llmProviders ?? []) {
+      if (providerName && p.name !== providerName) continue;
+      const mc = p.model_configurations.find((m) => m.name === modelName);
+      if (mc?.id != null) return mc.id;
+    }
+    return null;
+  }, [
+    values.llm_model_version_override,
+    values.llm_model_provider_override,
+    llmProviders,
+  ]);
+
+  const handleChange = useCallback(
+    (id: number | null) => {
+      if (id === null) {
+        void setFieldValue("llm_model_version_override", null);
+        void setFieldValue("llm_model_provider_override", null);
+        return;
+      }
+      for (const p of llmProviders ?? []) {
+        const mc = p.model_configurations.find((m) => m.id === id);
+        if (mc) {
+          void setFieldValue("llm_model_version_override", mc.name);
+          void setFieldValue("llm_model_provider_override", p.name);
+          break;
+        }
+      }
+    },
+    [llmProviders, setFieldValue]
+  );
+
+  return (
+    <ModelPickerPopover
+      value={modelConfigId}
+      onChange={handleChange}
+      personaId={personaId}
+    />
+  );
+}
+
 export interface AgentEditorPageProps {
   agent?: FullPersona;
   refreshAgent?: () => void;
@@ -506,7 +561,6 @@ export default function AgentEditorPage({
   const { mcpData, isLoading: isMcpLoading } = useMcpServersForAgentEditor();
   const { openApiTools: openApiToolsRaw, isLoading: isOpenApiLoading } =
     useOpenApiTools();
-  const { llmProviders } = useLLMProviders(existingAgent?.id);
   const mcpServers = mcpData?.mcp_servers ?? [];
   const openApiTools = openApiToolsRaw ?? [];
 
@@ -1536,55 +1590,7 @@ export default function AgentEditorPage({
                                   title="Default Model"
                                   description="This model will be used by Onyx by default in your chats."
                                 >
-                                  <ModelPickerPopover
-                                    value={(() => {
-                                      const modelName =
-                                        values.llm_model_version_override;
-                                      const providerName =
-                                        values.llm_model_provider_override;
-                                      if (!modelName) return null;
-                                      for (const p of llmProviders ?? []) {
-                                        if (
-                                          providerName &&
-                                          p.name !== providerName
-                                        )
-                                          continue;
-                                        const mc = p.model_configurations.find(
-                                          (m) => m.name === modelName
-                                        );
-                                        if (mc?.id != null) return mc.id;
-                                      }
-                                      return null;
-                                    })()}
-                                    onChange={(id) => {
-                                      if (id === null) {
-                                        void setFieldValue(
-                                          "llm_model_version_override",
-                                          null
-                                        );
-                                        void setFieldValue(
-                                          "llm_model_provider_override",
-                                          null
-                                        );
-                                        return;
-                                      }
-                                      for (const p of llmProviders ?? []) {
-                                        const mc = p.model_configurations.find(
-                                          (m) => m.id === id
-                                        );
-                                        if (mc) {
-                                          void setFieldValue(
-                                            "llm_model_version_override",
-                                            mc.name
-                                          );
-                                          void setFieldValue(
-                                            "llm_model_provider_override",
-                                            p.name
-                                          );
-                                          break;
-                                        }
-                                      }
-                                    }}
+                                  <AgentDefaultModelPicker
                                     personaId={existingAgent?.id}
                                   />
                                 </InputHorizontal>

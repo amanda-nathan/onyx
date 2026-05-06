@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Formik } from "formik";
+import { Formik, useFormikContext } from "formik";
 import { markdown } from "@opal/utils";
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
@@ -82,6 +82,7 @@ import {
   useSecondarySearchSettings,
 } from "@/hooks/useSearchSettings";
 import { useLlmDefaults } from "@/hooks/useLanguageModels";
+import { LLMProviderDescriptor } from "@/interfaces/llm";
 import ModelPickerPopover from "@/refresh-components/popovers/ModelPickerPopover";
 import Spacer from "@/refresh-components/Spacer";
 import useFilter from "@/hooks/useFilter";
@@ -541,6 +542,57 @@ interface IndexSettingsFormValues {
   enable_contextual_rag: boolean;
   contextual_rag_llm_name: string | null;
   contextual_rag_llm_provider: string | null;
+}
+
+interface ContextualRagModelPickerProps {
+  llmProviders: LLMProviderDescriptor[] | undefined;
+  disabled?: boolean;
+}
+
+function ContextualRagModelPicker({
+  llmProviders,
+  disabled,
+}: ContextualRagModelPickerProps) {
+  const { values, setFieldValue } = useFormikContext<IndexSettingsFormValues>();
+
+  const modelConfigId = useMemo((): number | null => {
+    const modelName = values.contextual_rag_llm_name;
+    const providerName = values.contextual_rag_llm_provider;
+    if (!modelName) return null;
+    for (const p of llmProviders ?? []) {
+      if (providerName && p.name !== providerName) continue;
+      const mc = p.model_configurations.find((m) => m.name === modelName);
+      if (mc?.id != null) return mc.id;
+    }
+    return null;
+  }, [
+    values.contextual_rag_llm_name,
+    values.contextual_rag_llm_provider,
+    llmProviders,
+  ]);
+
+  const handleChange = useCallback(
+    (id: number | null) => {
+      if (!id) return;
+      for (const p of llmProviders ?? []) {
+        const mc = p.model_configurations.find((m) => m.id === id);
+        if (mc) {
+          void setFieldValue("contextual_rag_llm_name", mc.name);
+          void setFieldValue("contextual_rag_llm_provider", p.name);
+          break;
+        }
+      }
+    },
+    [llmProviders, setFieldValue]
+  );
+
+  return (
+    <ModelPickerPopover
+      value={modelConfigId}
+      onChange={handleChange}
+      disabled={disabled}
+    />
+  );
 }
 
 export default function IndexSettingsPage() {
@@ -1408,42 +1460,8 @@ export default function IndexSettingsPage() {
                               disabled={!values.enable_contextual_rag}
                               withLabel
                             >
-                              <ModelPickerPopover
-                                value={(() => {
-                                  const modelName =
-                                    values.contextual_rag_llm_name;
-                                  const providerName =
-                                    values.contextual_rag_llm_provider;
-                                  if (!modelName) return null;
-                                  for (const p of llmProviders ?? []) {
-                                    if (providerName && p.name !== providerName)
-                                      continue;
-                                    const mc = p.model_configurations.find(
-                                      (m) => m.name === modelName
-                                    );
-                                    if (mc?.id != null) return mc.id;
-                                  }
-                                  return null;
-                                })()}
-                                onChange={(id) => {
-                                  if (!id) return;
-                                  for (const p of llmProviders ?? []) {
-                                    const mc = p.model_configurations.find(
-                                      (m) => m.id === id
-                                    );
-                                    if (mc) {
-                                      void setFieldValue(
-                                        "contextual_rag_llm_name",
-                                        mc.name
-                                      );
-                                      void setFieldValue(
-                                        "contextual_rag_llm_provider",
-                                        p.name
-                                      );
-                                      break;
-                                    }
-                                  }
-                                }}
+                              <ContextualRagModelPicker
+                                llmProviders={llmProviders}
                                 disabled={!values.enable_contextual_rag}
                               />
                             </InputHorizontal>
